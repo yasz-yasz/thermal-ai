@@ -70,12 +70,16 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingShareIntent(intent: Intent?) {
         if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
-            val sharedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val extraUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
             } else {
                 @Suppress("DEPRECATION")
                 intent.getParcelableExtra(Intent.EXTRA_STREAM)
             }
+            val clipUri = intent.clipData?.let { clip ->
+                if (clip.itemCount > 0) clip.getItemAt(0).uri else null
+            }
+            val sharedUri = extraUri ?: clipUri
             if (sharedUri != null) {
                 viewModel.onImageSelected(sharedUri)
             }

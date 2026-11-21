@@ -3,11 +3,16 @@ package com.strukai.thermal.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -24,17 +29,91 @@ object ImageEncoder {
         maxDimension: Int = 1280,
         jpegQuality: Int = 85
     ): EncodedImage = withContext(Dispatchers.IO) {
+        val rawBytes = readBytesFromUri(context, uri)
+        if (rawBytes.isEmpty()) {
+            throw IllegalArgumentException("File gambar kosong atau tidak dapat dibaca.")
+        }
+
+        val decoded = decodeBitmapSafely(rawBytes, maxDimension)
+            ?: throw IllegalArgumentException("Format gambar tidak didukung atau file rusak.")
+
+        val scaled = scaleDownIfNeeded(decoded, maxDimension)
+        if (scaled !== decoded) {
+            decoded.recycle()
+        }
+
+        val outputStream = ByteArrayOutputStream()
+        val compressed = scaled.compress(Bitmap.CompressFormat.JPEG, jpegQuality, outputStream)
+        if (!compressed) {
+            throw IllegalStateException("Gagal mengonversi gambar ke format JPEG.")
+        }
+        val jpegBytes = outputStream.toByteArray()
+        val base64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+
+        EncodedImage(base64 = base64, previewBitmap = scaled)
+    }
+
+    private fun readBytesFromUri(context: Context, uri: Uri): ByteArray {
+        val resolver = context.contentResolver
+
+        // 1. Cara utama: ContentResolver.openInputStream
+        runCatching {
+            resolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+
+        // 2. Fallback: ParcelFileDescriptor (mengatasi beberapa OEM / MIUI / HyperOS gallery provider)
+        runCatching {
+            resolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                FileInputStream(pfd.fileDescriptor).use { it.readBytes() }
+            }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+
+        // 3. Fallback untuk URI file:// langsung
+        if (uri.scheme == "file" && !uri.path.isNullOrBlank()) {
+            val file = File(uri.path!!)
+            if (file.exists() && file.canRead()) {
+                return file.readBytes()
+            }
+        }
+
+        throw IllegalArgumentException(
+            "Gagal membuka gambar screenshot. Coba pilih gambar dari Galeri/File atau bagikan ulang."
+        )
+    }
+
+    private fun decodeBitmapSafely(bytes: ByteArray, maxDimension: Int): Bitmap? {
+        // Pada Android 9+ (API 28+), ImageDecoder mendukung HEIC/HEIF, WebP, PNG, JPEG & rotasi EXIF otomatis
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val modernBitmap = runCatching {
+                val source = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                    // Wajib software allocator agar aman untuk compress() dan Compose asImageBitmap()
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    val size = info.size
+                    val longestSide = max(size.width, size.height)
+                    if (longestSide > maxDimension) {
+                        val ratio = maxDimension.toFloat() / longestSide.toFloat()
+                        val targetW = (size.width * ratio).roundToInt().coerceAtLeast(1)
+                        val targetH = (size.height * ratio).roundToInt().coerceAtLeast(1)
+                        decoder.setTargetSize(targetW, targetH)
+                    }
+                }
+            }.getOrNull()
+            if (modernBitmap != null) {
+                return modernBitmap
+            }
+        }
+
+        // Fallback BitmapFactory (baca dimensi tanpa Elvis null bug, lalu decode dari ByteArray)
         val boundsOptions = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, boundsOptions)
-        } ?: throw IllegalArgumentException("Gagal membuka gambar screenshot.")
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
 
         val rawWidth = boundsOptions.outWidth
         val rawHeight = boundsOptions.outHeight
         if (rawWidth <= 0 || rawHeight <= 0) {
-            throw IllegalArgumentException("File gambar tidak valid.")
+            return null
         }
 
         var sampleSize = 1
@@ -44,22 +123,9 @@ object ImageEncoder {
 
         val decodeOptions = BitmapFactory.Options().apply {
             inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        val decoded = context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, decodeOptions)
-        } ?: throw IllegalArgumentException("Gagal membaca bitmap gambar.")
-
-        val scaled = scaleDownIfNeeded(decoded, maxDimension)
-        if (scaled !== decoded) {
-            decoded.recycle()
-        }
-
-        val outputStream = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, jpegQuality, outputStream)
-        val jpegBytes = outputStream.toByteArray()
-        val base64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
-
-        EncodedImage(base64 = base64, previewBitmap = scaled)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
     }
 
     private fun scaleDownIfNeeded(bitmap: Bitmap, maxDimension: Int): Bitmap {
