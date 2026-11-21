@@ -15,10 +15,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -48,6 +50,7 @@ import com.strukai.thermal.ui.MainUiState
 fun SettingsScreen(
     uiState: MainUiState,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
+    onRefreshGeminiModels: () -> Unit,
     onTestPrint: () -> Unit
 ) {
     val settings = uiState.settings
@@ -151,16 +154,50 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text(
-                    text = "Preset Model Cepat:",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (activeProvider == AiProvider.GEMINI && uiState.discoveredGeminiModels.isNotEmpty()) {
+                            "Model Aktif dari Google API:"
+                        } else {
+                            "Preset Model Cepat:"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (activeProvider == AiProvider.GEMINI) {
+                        FilledTonalButton(
+                            onClick = onRefreshGeminiModels,
+                            enabled = !uiState.isLoadingGeminiModels
+                        ) {
+                            if (uiState.isLoadingGeminiModels) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Cek Model Aktif", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+
+                val modelChoices = if (activeProvider == AiProvider.GEMINI && uiState.discoveredGeminiModels.isNotEmpty()) {
+                    uiState.discoveredGeminiModels
+                } else {
+                    activeProvider.presetModels
+                }
+
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    activeProvider.presetModels.forEach { preset ->
+                    modelChoices.forEach { preset ->
                         FilterChip(
                             selected = currentModel == preset,
                             onClick = {

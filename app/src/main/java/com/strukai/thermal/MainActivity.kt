@@ -223,6 +223,7 @@ private fun StrukAIApp(viewModel: MainViewModel) {
                 MainTab.SETTINGS -> SettingsScreen(
                     uiState = uiState,
                     onUpdateSettings = viewModel::updateSettings,
+                    onRefreshGeminiModels = viewModel::refreshGeminiModels,
                     onTestPrint = {
                         ensureBluetoothAndRefresh { viewModel.testPrint() }
                     }

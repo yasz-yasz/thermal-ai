@@ -8,7 +8,7 @@ Aplikasi Android (Kotlin + Jetpack Compose) untuk mengonversi gambar screenshot 
   - Pilih gambar dari galeri atau langsung *Share* screenshot dari aplikasi lain ke **StrukAI Thermal**.
   - Ekstraksi otomatis header transaksi, tanggal/waktu, nomor referensi/SN, rincian key-value, dan total pembayaran.
 - **Multi-Provider AI Vision (Mendukung Free Tier)**:
-  - **Google Gemini** (`gemini-2.0-flash`, `gemini-2.5-flash`, `gemini-1.5-flash`, atau model kustom).
+  - **Google Gemini** (default **Gemini 4 Hydrogen** `gemini-4-hydrogen` dengan `thinkingLevel: LOW` untuk OCR cepat, auto-fallback saat model usang, plus tombol *Cek Model Aktif* langsung dari API Google).
   - **OpenRouter** (model Vision gratis seperti `google/gemini-2.0-flash-exp:free`, `meta-llama/llama-3.2-11b-vision-instruct:free`, `qwen/qwen2.5-vl-72b-instruct:free`, atau model kustom).
   - **OpenAI / OpenAI-Compatible** (`gpt-4o-mini`, `gpt-4o`, dengan dukungan Base URL kustom).
 - **Editor Struk Lengkap Sebelum Cetak**:

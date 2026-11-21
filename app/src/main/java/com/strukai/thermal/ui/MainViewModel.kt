@@ -41,6 +41,8 @@ data class MainUiState(
     val useRawTextEditor: Boolean = false,
     val rawReceiptText: String = "",
     val pairedPrinters: List<PrinterDeviceInfo> = emptyList(),
+    val discoveredGeminiModels: List<String> = emptyList(),
+    val isLoadingGeminiModels: Boolean = false,
     val statusMessage: String? = null,
     val errorMessage: String? = null
 ) {
@@ -130,17 +132,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             runCatching {
                 aiVisionService.convertScreenshotToReceipt(base64, state.settings)
-            }.onSuccess { parsedReceipt ->
-                val rawText = EscPosFormatter.buildPlainTextPreview(parsedReceipt, state.settings.paperWidth)
+            }.onSuccess { result ->
+                val parsedReceipt = result.receipt
+                val usedModel = result.resolvedModel
+                var updatedSettings = state.settings
+                val modelSwitched = state.settings.selectedProvider == AiProvider.GEMINI &&
+                    usedModel != state.settings.activeModel()
+                if (modelSwitched) {
+                    updatedSettings = state.settings.copy(geminiModel = usedModel)
+                    settingsRepository.saveSettings(updatedSettings)
+                }
+
+                val rawText = EscPosFormatter.buildPlainTextPreview(parsedReceipt, updatedSettings.paperWidth)
+                val infoMsg = if (modelSwitched) {
+                    "Struk berhasil dibuat (model otomatis diperbarui ke $usedModel)."
+                } else {
+                    "Struk berhasil dibuat! Silakan periksa atau edit sebelum dicetak."
+                }
                 _uiState.update {
                     it.copy(
                         isConverting = false,
+                        settings = updatedSettings,
                         receipt = parsedReceipt,
                         rawReceiptText = rawText,
                         useRawTextEditor = false,
                         hasGeneratedReceipt = true,
                         activeTab = MainTab.EDITOR,
-                        statusMessage = "Struk berhasil dibuat! Silakan periksa atau edit sebelum dicetak."
+                        statusMessage = infoMsg
                     )
                 }
             }.onFailure { err ->
@@ -247,6 +265,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     EscPosFormatter.buildPlainTextPreview(state.receipt, updated.paperWidth)
                 }
             )
+        }
+    }
+
+    fun refreshGeminiModels() {
+        val apiKey = _uiState.value.settings.geminiApiKey.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Isi API Key Google Gemini terlebih dahulu.") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingGeminiModels = true, errorMessage = null) }
+            runCatching {
+                aiVisionService.fetchAvailableGeminiModels(apiKey)
+            }.onSuccess { models ->
+                _uiState.update { state ->
+                    val current = state.settings.geminiModel
+                    val updatedSettings = if (models.isNotEmpty() && current !in models) {
+                        val next = state.settings.copy(geminiModel = models.first())
+                        settingsRepository.saveSettings(next)
+                        next
+                    } else {
+                        state.settings
+                    }
+                    state.copy(
+                        isLoadingGeminiModels = false,
+                        discoveredGeminiModels = models.take(10),
+                        settings = updatedSettings,
+                        statusMessage = if (models.isEmpty()) {
+                            "Tidak ada model Gemini generateContent ditemukan."
+                        } else {
+                            "Ditemukan ${models.size} model Gemini aktif."
+                        }
+                    )
+                }
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingGeminiModels = false,
+                        errorMessage = err.message ?: "Gagal memuat daftar model Gemini."
+                    )
+                }
+            }
         }
     }
 

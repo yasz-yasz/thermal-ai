@@ -11,25 +11,27 @@ enum class AiProvider(
 ) {
     GEMINI(
         displayName = "Google Gemini",
-        defaultModel = "gemini-2.0-flash",
+        defaultModel = "gemini-4-hydrogen",
         presetModels = listOf(
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-1.5-flash"
+            "gemini-4-hydrogen",
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-4-carbon"
         ),
         keyHint = "AIza...",
-        helperNote = "Gratis via Google AI Studio (aistudio.google.com)"
+        helperNote = "Gratis via Google AI Studio (aistudio.google.com) — mendukung Gemini 4 Hydrogen."
     ),
     OPENROUTER(
         displayName = "OpenRouter",
-        defaultModel = "google/gemini-2.0-flash-exp:free",
+        defaultModel = "openrouter/free",
         presetModels = listOf(
-            "google/gemini-2.0-flash-exp:free",
-            "meta-llama/llama-3.2-11b-vision-instruct:free",
+            "openrouter/free",
+            "google/gemini-4-hydrogen",
+            "google/gemma-3-27b-it:free",
             "qwen/qwen2.5-vl-72b-instruct:free"
         ),
         keyHint = "sk-or-v1-...",
-        helperNote = "Banyak model Vision :free di openrouter.ai"
+        helperNote = "Mendukung model Vision :free maupun google/gemini-4-hydrogen di openrouter.ai"
     ),
     OPENAI(
         displayName = "OpenAI",
@@ -103,7 +105,7 @@ data class AppSettings(
     }
 
     fun activeModel(): String = when (selectedProvider) {
-        AiProvider.GEMINI -> geminiModel.trim().ifEmpty { AiProvider.GEMINI.defaultModel }
+        AiProvider.GEMINI -> geminiModel.trim().removePrefix("models/").ifEmpty { AiProvider.GEMINI.defaultModel }
         AiProvider.OPENROUTER -> openRouterModel.trim().ifEmpty { AiProvider.OPENROUTER.defaultModel }
         AiProvider.OPENAI -> openAiModel.trim().ifEmpty { AiProvider.OPENAI.defaultModel }
     }
